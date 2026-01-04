@@ -1,23 +1,153 @@
-# Streaming SLO & Observability Lab
-Kafka / Flink / Hadoop(Iceberg) 기반 스트리밍 파이프라인에서  
+Streaming SLO & Observability Lab
+
+Kafka / Flink / Hadoop(Iceberg) 기반 스트리밍 파이프라인에서
 End-to-End Latency를 SLO로 정의하고 운영 판단 기준을 검증하는 실험 프로젝트입니다.
 
----
+본 프로젝트는 기능 구현이 아니라,
+운영 환경에서 언제 시스템을 장애로 판단해야 하는지를 기술적으로 증명하는 것을 목표로 합니다.
 
-## 1. Background
+Background
 
-Kafka/Flink 기반 스트리밍 시스템에서는 Consumer Lag이 정상임에도 불구하고  
-실제 데이터 처리 지연이나 사용자 영향이 발생하는 경우가 많습니다.
+Kafka / Flink 기반 스트리밍 시스템에서는 다음과 같은 문제가 반복적으로 발생합니다.
 
-본 프로젝트는 다음 질문에서 출발합니다.
+Consumer Lag은 정상이나 실제 데이터 처리는 지연됨
 
-- Lag이 정상일 때도 시스템을 장애로 판단해야 하는 시점은 언제인가?
-- 운영 판단 기준을 정책이 아니라 **기술적 지표(SLO)**로 정의할 수 있는가?
+Sink 병목이나 Checkpoint 지연이 Lag 지표에 반영되지 않음
 
-이를 위해 Lag 중심 관측의 한계를 검증하고,  
-**End-to-End Latency 기반 SLO**를 운영 판단 기준으로 실험합니다.
+장애 판단이 경험이나 감에 의존함
 
----
+이로 인해 운영자는 문제가 발생한 이후에야 장애를 인지하게 됩니다.
 
-## 2. Architecture
+본 프로젝트는 Lag 중심 관측의 한계를 검증하고,
+**End-to-End Latency와 Processing Freshness를 운영 판단의 기준(SLO)**으로 삼는 접근을 실험합니다.
 
+Architecture
+
+본 프로젝트는 운영 판단이 실제로 결정되는 스트리밍 구간에만 집중합니다.
+
+Data Flow
+
+Kafka Producer
+
+Kafka Topic
+
+Flink Job (Stateful Processing, Event Time 기반)
+
+Hadoop Iceberg Table
+
+Prometheus / Grafana
+
+Architecture 설명
+
+Kafka Producer는 이벤트에 event_time과 ingest_time을 포함해 전송합니다.
+
+Flink Job은 상태(state)를 가지는 스트리밍 처리로 이벤트를 가공합니다.
+
+처리 결과는 Hadoop Iceberg 테이블에 적재됩니다.
+
+Iceberg는 실제 운영 환경에서 발생하는 sink 병목 및 checkpoint 영향을 재현하기 위해 사용됩니다.
+
+Prometheus와 Grafana를 통해 Kafka, Flink, End-to-End 지표를 관측합니다.
+
+Spark, Backend Application, MongoDB 등은
+운영 판단과 직접적인 관련이 없기 때문에 의도적으로 제외했습니다.
+
+Technology Stack
+Streaming / Data
+
+Apache Kafka
+
+Apache Flink
+
+Hadoop Iceberg
+
+Observability
+
+Prometheus
+
+Grafana
+
+Infrastructure
+
+Docker
+
+Docker Compose
+
+Observability Metrics
+Kafka Metrics
+
+Consumer Lag
+
+Throughput (records in / out)
+
+Broker Latency
+
+Flink Metrics
+
+Checkpoint Duration
+
+Checkpoint Failure Count
+
+Backpressure (Task Busy Time)
+
+Restart Count
+
+State Size
+
+End-to-End Metrics
+
+End-to-End Latency (p50 / p95 / p99)
+
+Processing Freshness (current time - event_time)
+
+SLO Definition
+Latency SLO
+
+p95 End-to-End Latency < 5 seconds (10-minute rolling window)
+
+Freshness SLO
+
+p99 Processing Freshness < 30 seconds
+
+Reliability
+
+Processing success rate > 99.9%
+
+Consumer Lag은 참고 지표로만 사용하며,
+SLO breach 판단에는 직접 사용하지 않습니다.
+
+Failure and Stress Scenarios
+
+다음 장애 시나리오를 의도적으로 주입합니다.
+
+Iceberg write 지연 발생
+
+Flink TaskManager 재시작
+
+Checkpoint timeout 유도
+
+각 시나리오에서 다음을 관측합니다.
+
+Consumer Lag 변화 여부
+
+End-to-End Latency spike 발생 시점
+
+SLO breach 발생 시점과 운영 판단의 차이
+
+Operational Decisions
+
+실험 결과를 기반으로 다음과 같은 운영 판단 기준을 도출합니다.
+
+Lag이 정상이어도 End-to-End Latency SLO가 깨지면 장애로 판단
+
+Checkpoint failure 증가 시 write path 또는 state 점검
+
+Sink 병목이 지속되면 parallelism 조정 또는 저장소 분리 검토
+
+Conclusion
+
+스트리밍 시스템의 안정성은 Lag이 아니라
+End-to-End Latency와 Processing Freshness 기준으로 판단되어야 합니다.
+
+본 프로젝트는 운영 판단을
+**자동화 가능한 기술 기준(SLO)**으로 정리하는 것을 목표로 합니다.
